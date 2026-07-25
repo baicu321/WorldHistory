@@ -9,7 +9,9 @@
     "client.LevelRendererMixin",
     "client.ParticleEngineMixin",
     "client.BlockEntityRenderDispatcherMixin",
-    "client.CameraMixin"
+    "client.CameraMixin",
+    "client.LocalPlayerMixin",
+    "client.MultiPlayerGameModeMixin"
   ],
   "injectors": {
     "defaultRequire": 1

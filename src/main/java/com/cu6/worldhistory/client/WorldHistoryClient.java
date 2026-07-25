@@ -10,6 +10,8 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.InputEvent;
+import net.neoforged.neoforge.client.event.MovementInputUpdateEvent;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import org.lwjgl.glfw.GLFW;
@@ -71,6 +73,15 @@ public final class WorldHistoryClient {
     }
 
     @SubscribeEvent
+    public static void onClientTick(ClientTickEvent.Pre event) {
+        if (!freePreview) return;
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.player == null) return;
+        while (minecraft.options.keyDrop.consumeClick()) { }
+        while (minecraft.options.keySwapOffhand.consumeClick()) { }
+    }
+
+    @SubscribeEvent
     public static void onClientTick(ClientTickEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.level == null || minecraft.player == null) return;
@@ -104,6 +115,30 @@ public final class WorldHistoryClient {
         } else if (ARCHIVE.canStartCapture()) {
             captureTask = CaptureTask.begin(minecraft.level, minecraft.player, config);
         }
+    }
+
+    @SubscribeEvent
+    public static void onMovementInputUpdate(MovementInputUpdateEvent event) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (!freePreview || event.getEntity() != minecraft.player) return;
+        var input = event.getInput();
+        input.leftImpulse = 0.0F;
+        input.forwardImpulse = 0.0F;
+        input.up = false;
+        input.down = false;
+        input.left = false;
+        input.right = false;
+        input.jumping = false;
+        input.shiftKeyDown = false;
+        event.getEntity().setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
+        event.getEntity().setSprinting(false);
+    }
+
+    @SubscribeEvent
+    public static void onInteractionKeyMapping(InputEvent.InteractionKeyMappingTriggered event) {
+        if (!freePreview) return;
+        event.setSwingHand(false);
+        event.setCanceled(true);
     }
 
     @SubscribeEvent
@@ -203,6 +238,11 @@ public final class WorldHistoryClient {
     static void viewWithFreePreview(HistorySnapshot snapshot) {
         view(snapshot);
         Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.gameMode == null) throw new IllegalStateException("Free preview requires an active game mode");
+        if (minecraft.gameMode.isDestroying()) minecraft.gameMode.stopDestroyBlock();
+        if (minecraft.player.isUsingItem()) minecraft.gameMode.releaseUsingItem(minecraft.player);
+        minecraft.player.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO);
+        minecraft.player.setSprinting(false);
         previewPosition = new net.minecraft.world.phys.Vec3(viewAnchor.x, minecraft.player.getEyeY(), viewAnchor.z);
         previewYaw = minecraft.player.getYRot();
         previewPitch = minecraft.player.getXRot();

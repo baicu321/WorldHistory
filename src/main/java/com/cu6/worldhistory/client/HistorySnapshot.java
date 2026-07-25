@@ -5,6 +5,8 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -80,14 +82,30 @@ public final class HistorySnapshot {
     }
 
     public CompoundTag save() {
+        CompoundTag tag = saveHeaderAndEntities();
+        ListTag chunkTags = new ListTag();
+        for (ChunkSnapshot chunk : chunks) chunkTags.add(chunk.save());
+        tag.put("Chunks", chunkTags);
+        return tag;
+    }
+
+    CompoundTag saveManifest(List<String> chunkHashes) {
+        if (chunkHashes.size() != chunks.size()) {
+            throw new IllegalArgumentException("Chunk hash count does not match snapshot chunk count");
+        }
+        CompoundTag tag = saveHeaderAndEntities();
+        ListTag hashes = new ListTag();
+        for (String chunkHash : chunkHashes) hashes.add(StringTag.valueOf(chunkHash));
+        tag.put("ChunkHashes", hashes);
+        return tag;
+    }
+
+    private CompoundTag saveHeaderAndEntities() {
         CompoundTag tag = new CompoundTag();
         tag.putLong("GameTime", gameTime);
         tag.putDouble("X", x); tag.putDouble("Y", y); tag.putDouble("Z", z);
         tag.putDouble("OriginX", originX); tag.putDouble("OriginY", originY); tag.putDouble("OriginZ", originZ);
         tag.putBoolean("Complete", complete);
-        ListTag chunkTags = new ListTag();
-        for (ChunkSnapshot chunk : chunks) chunkTags.add(chunk.save());
-        tag.put("Chunks", chunkTags);
         ListTag entityTags = new ListTag();
         for (RecordedEntity entity : entities) entityTags.add(entity.save());
         tag.put("Entities", entityTags);
@@ -97,6 +115,26 @@ public final class HistorySnapshot {
     public static HistorySnapshot load(CompoundTag tag) {
         List<ChunkSnapshot> chunks = new ArrayList<>();
         for (var value : tag.getList("Chunks", CompoundTag.TAG_COMPOUND)) chunks.add(ChunkSnapshot.load((CompoundTag) value));
+        return loadHeaderAndEntities(tag, chunks, false);
+    }
+
+    static HistorySnapshot loadManifest(CompoundTag tag, List<ChunkSnapshot> chunks) {
+        if (!tag.contains("ChunkHashes", Tag.TAG_LIST)) {
+            throw new IllegalStateException("WorldHistory manifest is missing chunk hashes");
+        }
+        if (tag.getList("ChunkHashes", Tag.TAG_STRING).size() != chunks.size()) {
+            throw new IllegalStateException("WorldHistory manifest chunk count does not match loaded blobs");
+        }
+        return loadHeaderAndEntities(tag, chunks, true);
+    }
+
+    private static HistorySnapshot loadHeaderAndEntities(CompoundTag tag, List<ChunkSnapshot> chunks, boolean strict) {
+        if (strict) {
+            requireTag(tag, "GameTime", Tag.TAG_LONG);
+            requireTag(tag, "X", Tag.TAG_DOUBLE); requireTag(tag, "Y", Tag.TAG_DOUBLE); requireTag(tag, "Z", Tag.TAG_DOUBLE);
+            requireTag(tag, "OriginX", Tag.TAG_DOUBLE); requireTag(tag, "OriginY", Tag.TAG_DOUBLE); requireTag(tag, "OriginZ", Tag.TAG_DOUBLE);
+            requireTag(tag, "Complete", Tag.TAG_BYTE); requireTag(tag, "Entities", Tag.TAG_LIST);
+        }
         List<RecordedEntity> entities = new ArrayList<>();
         for (var value : tag.getList("Entities", CompoundTag.TAG_COMPOUND)) entities.add(RecordedEntity.load((CompoundTag) value));
         double x = tag.getDouble("X");
@@ -105,6 +143,10 @@ public final class HistorySnapshot {
         return new HistorySnapshot(tag.getLong("GameTime"), x, y, z, tag.contains("OriginX") ? tag.getDouble("OriginX") : x,
                 tag.contains("OriginY") ? tag.getDouble("OriginY") : y, tag.contains("OriginZ") ? tag.getDouble("OriginZ") : z, chunks, entities,
                 tag.contains("Complete") ? tag.getBoolean("Complete") : !chunks.isEmpty());
+    }
+
+    private static void requireTag(CompoundTag tag, String name, int type) {
+        if (!tag.contains(name, type)) throw new IllegalStateException("WorldHistory manifest is missing " + name);
     }
 
     /** Immutable entity data, including the original NBT and packed light used by the renderer. */

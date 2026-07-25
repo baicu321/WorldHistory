@@ -31,6 +31,7 @@ displayName = "${mod_name}" #mandatory
 # A text field displayed in the mod UI
 authors = "${mod_authors}" #optional
 
+logoFile="icon.png"
 # The description text for the mod (multi line!) (#mandatory)
 description = '''${mod_description}'''
 
